@@ -16,8 +16,12 @@
 # https://github.com/vmware/pyvcloud/blob/master/pyvcloud/vcd/utils.py
 
 import sys
+import os.path
 
 import xmltodict
+import tomli
+import requests
+
 from pyvcloud.vcd.utils import vdc_to_dict
 from pyvcloud.vcd.client import BasicLoginCredentials
 from pyvcloud.vcd.client import Client
@@ -26,19 +30,35 @@ from pyvcloud.vcd.org import Org
 from pyvcloud.vcd.vdc import VDC
 from pyvcloud.vcd.vapp import VApp
 from pyvcloud.vcd.vm import VM
+from pyvcloud.vcd.metadata import Metadata
 from lxml import etree
 from lxml import objectify
+from pyvcloud.vcd import utils
 
-import requests
+from module.common.misc import grab, dump, get_string_or_none, plural
 
 # Collect arguments.
-if len(sys.argv) != 5:
-    print("Usage: python3 {0} host org user password ".format(sys.argv[0]))
-    sys.exit(1)
-host = sys.argv[1]
-org = sys.argv[2]
-user = sys.argv[3]
-password = sys.argv[4]
+conf_file = "pycloud.toml"
+if os.path.exists(conf_file):
+    with open(conf_file, mode="rb") as fp:
+        config = tomli.load(fp)
+    try:
+        host     = config["host"]
+        org      = config["org"]
+        user     = config["user"]
+        password = config["password"]
+    except:
+        print(f"Wrong confiig file {conf_file} format")
+        sys.exit(1)
+else:
+    if len(sys.argv) != 5:
+        print("Usage: python3 {0} host org user password ".format(sys.argv[0]))
+        sys.exit(1)
+    host = sys.argv[1]
+    org = sys.argv[2]
+    user = sys.argv[3]
+    password = sys.argv[4]
+    
 #vdc = sys.argv[5]
 
 # Disable warnings from self-signed certificates.
@@ -74,10 +94,9 @@ for vdc_info in org.list_vdcs():
 
 vdc_list = org.list_vdcs()
 
-#print("Fetching VDC...")
+print("Fetching VDC...")
 
 allvm_org_data = dict()
-
 
 for vdc in vdc_list: 
     vdc_name = (vdc['name'])
@@ -87,28 +106,27 @@ for vdc in vdc_list:
     vdc = VDC(client, resource=vdc_resource)
 
     vdc_dict = vdc_to_dict(vdc_resource)
-    print(f"vdc Info is:'{vdc_dict}'")
+    #print(f"vdc Info is:'{vdc_dict}'")
 
-    storage_profile = vdc.get_storage_profile('C01-Medium')
+    #storage_profiles = vdc.get_storage_profiles()
+    for profile in vdc_dict.get('storage_profiles',None):
+        #print(f"profile: {profile}")
+        storage_profile = vdc.get_storage_profile(profile)
 
-    raw_data = etree.tostring(storage_profile)
-    storage_dict = xmltodict.parse(raw_data)
-    storage_url = storage_dict.get('VdcStorageProfile').get('@href') 
-    
-    storage_data = vdc.client.get_resource(storage_url)
+        raw_data = etree.tostring(storage_profile)
+        storage_dict = xmltodict.parse(raw_data)
+        storage_url = storage_dict.get('VdcStorageProfile').get('@href') 
 
-    print(f" stprof is: {storage_data.__dict__}")
-    break
+        storage_data = vdc.client.get_resource(storage_url)
+
+        #print(f" stprof is: {storage_data.__dict__}")
+        break
     '''
     Сначала получаете список политик хранения с помощью функции get_storage_profiles() из модуля pyvcloud.vcd.vdc.
     Далее с помощью функции get_resource() из модуля pyvcloud.vcd.client запрашиваете данные используя url, 
     который находиться в атрибуте href политики хранения и получаете нужные данные Limit, StorageUsedMB.
     '''
-    for profile in storage_profiles:
-        print(f"profile: {profile}")
 
-    allvm_org_list[vdc_name] = {}
-    print("Fetching vApps....")
     vapp_list = vdc.list_resources(EntityType.VAPP)
     #vnet_list = list()
     #vnet_list.append(vdc.list_orgvdc_direct_networks)
@@ -116,6 +134,9 @@ for vdc in vdc_list:
     #vnet_list.append(vdc.list_orgvdc_isolated_networks)
     #print(f"vdc net is: '{vnet_list}'")
     vm_list = list()
+    allvm_org_list = dict()
+    allvm_org_list[vdc_name] = dict()
+    print("Fetching vApps....")
     for vapp in vapp_list:
         vapp_name = vapp.get('name')
         vapp_resource = vdc.get_vapp(vapp_name)
@@ -123,48 +144,73 @@ for vdc in vdc_list:
         vapp_obj = VApp(client, resource=vapp_resource)
 
         #print(type(vm_resource))
+        
         vapp_net = vapp_obj.get_vapp_network_list()
         for vnet in vapp_net:
             vnet_prop = list()
             vnet_data = vdc.get_routed_orgvdc_network(vnet['name'])
 
             if isinstance(vnet_data,objectify.ObjectifiedElement):
-                xmlRaw = etree.tostring(vnet_data)
-                vnet_dict = xmltodict.parse(xmlRaw)
-                mask = vnet_dict.get('OrgVdcNetwork',{}).get('Configuration',{}).get('IpScopes',{}).get('IpScope',{}).get('SubnetPrefixLength',{})
-                gw   = vnet_dict.get('OrgVdcNetwork',{}).get('Configuration',{}).get('IpScopes',{}).get('IpScope',{}).get('Gateway',{})
-                name = vnet_dict.get('OrgVdcNetwork',{}).get('@name', None)
-                print(f"mask:{mask}, gw:{gw}, netName:\n {name}")
+                
+                vnet_config = vnet_data.get('Configuration',None)
+                vnet_info = {
+                    "mask": grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="Unknown"),
+                    "gw"  : grab(vnet_data,'Configuration.IpScopes.IpScope.Gateway',fallback="Unknown"),
+                    "name": grab(vnet,'name',fallback="Unknown")
+                }
+                #mask = vnet_dict.get('OrgVdcNetwork',{}).get('Configuration',{}).get('IpScopes',{}).get('IpScope',{}).get('SubnetPrefixLength',{})
+                #gw   = vnet_dict.get('OrgVdcNetwork',{}).get('Configuration',{}).get('IpScopes',{}).get('IpScope',{}).get('Gateway',{})
+                #name = vnet_dict.get('OrgVdcNetwork',{}).get('@name', None)
+            print(f"NetInfo: {vnet_info}")
+               
 
-            for child in vnet_data.iter('Configuration') :
-                print(f"tag: '{child.tag}', attrib: '{child.attrib}'" )
-
+         
             #zmask = vnet_data.iter('IpScope')
             #zmask = vnet_data.xpath("./OrgVdcNetwork")
  
             #print(f"vDC net for '{vapp_name}':'{vnet['name']}' -- \nMask:'{xroot}'")
+        #'''
         print("Fetching VM...")
         vm_resource = vapp_obj.get_all_vms()
         # get vapp vm count first
         allvm_org_list[vdc_name][vapp_name] = []
         vapp_vm = list()
         for vm_res in vm_resource:
-            
+            disk_data = list()
             vapp_vm = VM(client, resource=vm_res)
             vmName = vm_res.attrib["name"]
-            #vapp_vm.list_virtual_hardware_section()
+            vm_storage_profiles = vapp_vm.list_storage_profile()
+            vm_hardware = vapp_vm.list_virtual_hardware_section(is_disk=True)
+            # get device info
+            for vm_device in vm_hardware:
+                if vm_device.get('diskElementName',False):
+                    disk_data.append({
+                        "name": vm_device.get("diskElementName"),
+                        "size": int(vm_device.get('diskVirtualQuantityInBytes',0) / 1024 / 1024),
+                        "description": '' #" / ".join( grab(vapp_vm.list_storage_profile(),'name' ) )                  
+                    })
+            for ind, val in enumerate(disk_data):
+                val["description"] = f"storage profile: {vm_storage_profiles[ind].get('name','Unknown')}"
+
+            #{'diskElementName': 'Hard disk 1', 'diskVirtualQuantityInBytes': 80530636800}        
             allvm_org_list[vdc_name][vapp_name].append({
                 'name'    : vmName, 
                 'active'  : vapp_vm.is_powered_on(),                
-                'hardware': vapp_vm.list_virtual_hardware_section(is_disk=True),
+                #'hardware': vapp_vm.list_virtual_hardware_section(is_disk=True),
                 'platform': vapp_vm.list_os_section(),
-                'network' : vapp_vm.list_nics()
-                #'disk'    : vapp_vm.list_storage_profile() 
-
+                #'network' : vapp_vm.list_nics()
+                'disk'    : disk_data
             })
-            #print(f"vm_name:{vmName}") 
+            
+            
+            #get_vm_metadata
+ 
+            vm_metadata = vapp_vm.get_metadata()
+            vm_metadata_obg = Metadata(client=client,resource=vm_metadata)
+            vm_metadata_res  = vm_metadata_obg.get_resource()
+            vm_metadata_dict = utils.metadata_to_dict(vm_metadata_res)
+            print(f"metadata_res:{utils.metadata_to_dict(vm_metadata_res)}")
             break
-
         #print(type(vm_resource))
         break
 #print(f"vm info is {allvm_org_list}")

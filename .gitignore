@@ -22,4 +22,5 @@ cache/*
 # settings file
 settings.ini
 
+# toml conf
 *.toml

@@ -10,47 +10,31 @@
 import os
 import re
 import math
+import datetime
 import pprint
+import ssl
 from ipaddress import ip_address, ip_network, ip_interface, IPv4Network
 from urllib.parse import unquote
 #
-
+import urllib3
+import requests
+import http
 from packaging import version
 
 from module.sources.common.source_base import SourceBase
+from module.sources.vclouddirector.config import VcloudDirectorConfig
 from module.common.logging import get_logger, DEBUG3
-from module.common.misc import grab, get_string_or_none
-from module.common.support import normalize_mac_address, ip_valid_to_add_to_netbox
-from module.netbox.object_classes import (
-    NetBoxObject,
-    NetBoxInterfaceType,
-    NBTag,
-    NBManufacturer,
-    NBDeviceType,
-    NBPlatform,
-    NBClusterType,
-    NBClusterGroup,
-    NBDeviceRole,
-    NBSite,
-    NBCluster,
-    NBDevice,
-    NBVM,
-    NBVMInterface,
-    NBInterface,
-    NBIPAddress,
-    NBPrefix,
-    NBTenant,
-    NBVRF,
-    NBVLAN,
-    NBCustomField
-)
+from module.common.misc import grab, dump, get_string_or_none, plural
+from module.common.support import normalize_mac_address
+from module.netbox.inventory import NetBoxInventory
+from module.netbox import *
 
-# Import Modules for Vcloud Director
-import sys
-import requests
+
 import xmltodict
 from lxml import etree
 from lxml import objectify
+
+# Import Modules for Vcloud Director
 from pyvcloud.vcd.client import BasicLoginCredentials
 from pyvcloud.vcd.client import Client
 from pyvcloud.vcd.client import EntityType
@@ -58,6 +42,7 @@ from pyvcloud.vcd.org import Org
 from pyvcloud.vcd.vdc import VDC
 from pyvcloud.vcd.vapp import VApp
 from pyvcloud.vcd.vm import VM
+from pyvcloud.vcd import utils
 
 log = get_logger()
 
@@ -86,34 +71,13 @@ class CheckCloudDirector(SourceBase):
         NBTenant,
         NBVRF,
         NBVLAN,
-        NBCustomField
+        NBCustomField,
+        NBVirtualDisk
     ]
 
-    settings = {
-        "enabled": True,
-        "vcloud_url": None,
-        "validate_tls_certs": False,
-        "username": None,
-        "password": None,
-        "vcloud_org": None,
-        "permitted_subnets": None,
-        "excluded_subnets": None,
-        "overwrite_host_name": False,
-        "overwrite_interface_name": False,
-        "overwrite_interface_attributes": True,
-        "cluster_tenant_relation": None,
-        "cluster_site_relation": None,
-        "vdc_include_filter": None,
-        "vdc_exclude_filter": None,
-        "set_primary_ip": "when-undefined"
-    }
-
-    init_successful = False
-    inventory = None
-    name = None
-    source_tag = None
+    
     source_type = "vcloud_director"
-    enabled = False
+    #enabled = False
 
     vcloudClient = None
     device_object = None
@@ -122,23 +86,27 @@ class CheckCloudDirector(SourceBase):
     #permitted_subnets = None
     #vcd_org     
 
-    def __init__(self, name=None, settings=None, inventory=None):
+    def __init__(self, name=None):
   
         if name is None:
             raise ValueError(f"Invalid value for attribute 'name': '{name}'.")
 
-        self.inventory = inventory
+        self.inventory = NetBoxInventory()
         self.name = name
 
-        self.parse_config_settings(settings)
+        # parse settings
+        settings_handler = VcloudDirectorConfig()
+        settings_handler.source_name = self.name
+        self.settings = settings_handler.parse()
 
-        self.source_tag = f"Source: {name}"
-        self.site_name = f"vCloudDirector: {name}"
+        self.set_source_tag()
+        self.site_name = f"vCloud: {name}"
 
-        if self.enabled is False:
+        if self.settings.enabled is False:
             log.info(f"Source '{name}' is currently disabled. Skipping")
             return
-        
+
+
         self.create_api_session()
 
         self.init_successful = True
@@ -309,9 +277,6 @@ class CheckCloudDirector(SourceBase):
                 log.info(f"Get vm data from vApp '{vapp_name}'")
                 for vm_res in vm_resource:
                     self.add_virtual_machine(vm_res,vdc['name'])        
-                    #break
-                #print(type(vm_resource))
-                #break
 
         #for view_name, view_details in object_mapping.items():
         self.update_basic_data()
@@ -759,7 +724,8 @@ class CheckCloudDirector(SourceBase):
 
         # get disk size in GB
         p = math.pow(1024, 3)
-        vm_data['disk'] = round(disk_size / p)
+        if version.parse(self.inventory.netbox_api_version) < version.parse("3.7.0"):
+            vm_data['disk'] = round(disk_size / p)
         # get vm platform Data
         vm_data['platform'] = {"name": str(grab(vapp_vm.list_os_section(),'Description'))}
         vm_primary_ip4 = None
@@ -809,237 +775,8 @@ class CheckCloudDirector(SourceBase):
             log.debug(f"FAIL get primary IP for vm:'{vm_data}'")
             return    
         log.debug(" create VM and interfases ")
-        self.add_device_vm_to_inventory(NBVM, object_data=vm_data, vnic_data=vm_nic_dict,
+        add_device_vm_to_inventory(NBVM, object_data=vm_data, vnic_data=vm_nic_dict,
                                         nic_ips=nic_ips, p_ipv4=vm_primary_ip4, p_ipv6=None)
-
-
-
-    def add_device_vm_to_inventory(self, object_type, object_data, pnic_data=None, vnic_data=None,
-                                   nic_ips=None, p_ipv4=None, p_ipv6=None):
-        """
-        Add/update device/VM object in inventory based on gathered data.
-
-        Try to find object first based on the object data, interface MAC addresses and primary IPs.
-            1. try to find by name and cluster/site
-            2. try to find by mac addresses interfaces
-            3. try to find by serial number (1st) or asset tag (2nd) (ESXi host)
-            4. try to find by primary IP
-
-        IP addresses for each interface are added here as well. First they will be checked and added
-        if all checks pass. For each IP address a matching IP prefix will be searched for. First we
-        look for longest matching IP Prefix in the same site. If this failed we try to find the longest
-        matching global IP Prefix.
-
-        If a IP Prefix was found then we try to get the VRF and VLAN for this prefix. Now we compare
-        if interface VLAN and prefix VLAN match up and warn if they don't. Then we try to add data to
-        the IP address if not already set:
-
-            add prefix VRF if VRF for this IP is undefined
-            add tenant if tenant for this IP is undefined
-                1. try prefix tenant
-                2. if prefix tenant is undefined try VLAN tenant
-
-        And we also set primary IP4/6 for this object depending on the "set_primary_ip" setting.
-
-        If a IP address is set as primary IP for another device then using this IP on another
-        device will be rejected by NetBox.
-
-        Setting "always":
-            check all NBDevice and NBVM objects if this IP address is set as primary IP to any
-            other object then this one. If we found another object, then we unset the primary_ip*
-            for the found object and assign it to this object.
-
-            This setting will also reset the primary IP if it has been changed in NetBox
-
-        Setting "when-undefined":
-            Will set the primary IP for this object if primary_ip4/6 is undefined. Will cause a
-            NetBox error if IP has been assigned to a different object as well
-
-        Setting "never":
-            Well, the attribute primary_ip4/6 will never be touched/changed.
-
-        Parameters
-        ----------
-        object_type: (NBDevice, NBVM)
-            NetBoxObject sub class of object to add
-        object_data: dict
-            data of object to add/update
-        pnic_data: dict
-            data of physical interfaces of this object, interface name as key
-        vnic_data: dict
-            data of virtual interfaces of this object, interface name as key
-        nic_ips: dict
-            dict of ips per interface of this object, interface name as key
-        p_ipv4: str
-            primary IPv4 as string including netmask/prefix
-        p_ipv6: str
-            primary IPv6 as string including netmask/prefix
-
-        """
-
-        if object_type not in [NBDevice, NBVM]:
-            raise ValueError(f"Object must be a '{NBVM.name}' or '{NBDevice.name}'.")
-
-        if log.level == DEBUG3:
-
-            log.debug3("function: add_device_vm_to_inventory")
-            log.debug3(f"Object type {object_type}")
-            pprint.pprint(object_data)
-            pprint.pprint(pnic_data)
-            pprint.pprint(vnic_data)
-            pprint.pprint(nic_ips)
-            pprint.pprint(p_ipv4)
-            pprint.pprint(p_ipv6)
-
-        # check existing Devices for matches
-        log.debug2(f"Trying to find a {object_type.name} based on the collected name, cluster, IP and MAC addresses")
-
-        device_vm_object = self.inventory.get_by_data(object_type, data=object_data)
-
-        if device_vm_object is not None:
-            log.debug2("Found a exact matching %s object: %s" %
-                       (object_type.name, device_vm_object.get_display_name(including_second_key=True)))
-
-        # keep searching if no exact match was found
-        else:
-
-            log.debug2(f"No exact match found. Trying to find {object_type.name} based on MAC addresses")
-
-            # on VMs vnic data is used, on physical devices pnic data is used
-            mac_source_data = vnic_data if object_type == NBVM else pnic_data
-
-            nic_macs = [x.get("mac_address") for x in mac_source_data.values()]
-
-            device_vm_object = self.get_object_based_on_macs(object_type, nic_macs)
-
-        # look for devices with same serial or asset tag
-        if object_type == NBDevice:
-
-            if device_vm_object is None and object_data.get("serial") is not None and \
-                    bool(self.match_host_by_serial) is True:
-                log.debug2(f"No match found. Trying to find {object_type.name} based on serial number")
-
-                device_vm_object = self.inventory.get_by_data(object_type, data={"serial": object_data.get("serial")})
-
-            if device_vm_object is None and object_data.get("asset_tag") is not None:
-                log.debug2(f"No match found. Trying to find {object_type.name} based on asset tag")
-
-                device_vm_object = self.inventory.get_by_data(object_type,
-                                                              data={"asset_tag": object_data.get("asset_tag")})
-
-        if device_vm_object is not None:
-            log.debug2("Found a matching %s object: %s" %
-                       (object_type.name, device_vm_object.get_display_name(including_second_key=True)))
-
-        # keep looking for devices with the same primary IP
-        else:
-
-            log.debug2(f"No match found. Trying to find {object_type.name} based on primary IP addresses")
-
-            device_vm_object = self.get_object_based_on_primary_ip(object_type, p_ipv4, p_ipv6)
-
-        if device_vm_object is None:
-            object_name = object_data.get(object_type.primary_key)
-            log.debug(f"No existing {object_type.name} object for {object_name}. Creating a new {object_type.name}.")
-            device_vm_object = self.inventory.add_object(object_type, data=object_data, source=self)
-        else:
-            device_vm_object.update(data=object_data, source=self)
-
-        # update role according to config settings
-        object_name = object_data.get(object_type.primary_key)
-        role_name = self.get_object_relation(object_name,
-                                             "host_role_relation" if object_type == NBDevice else "vm_role_relation",
-                                             fallback="Server")
-
-        if object_type == NBDevice:
-            device_vm_object.update(data={"device_role": {"name": role_name}})
-        if object_type == NBVM:
-            device_vm_object.update(data={"role": {"name": role_name}})
-
-        # compile all nic data into one dictionary
-        if object_type == NBVM:
-            nic_data = vnic_data
-        else:
-            nic_data = {**pnic_data, **vnic_data}
-
-        # map interfaces of existing object with discovered interfaces
-        nic_object_dict = self.map_object_interfaces_to_current_interfaces(device_vm_object, nic_data)
-
-        if object_data.get("status", "") == "active" and (nic_ips is None or len(nic_ips.keys()) == 0):
-            log.debug(f"No IP addresses for '{object_name}' found!")
-
-        primary_ipv4_object = None
-        primary_ipv6_object = None
-
-        if p_ipv4 is not None:
-            try:
-                primary_ipv4_object = ip_interface(p_ipv4)
-            except ValueError:
-                log.error(f"Primary IPv4 ({p_ipv4}) does not appear to be a valid IP address (needs included suffix).")
-
-        if p_ipv6 is not None:
-            try:
-                primary_ipv6_object = ip_interface(p_ipv6)
-            except ValueError:
-                log.error(f"Primary IPv6 ({p_ipv6}) does not appear to be a valid IP address (needs included suffix).")
-
-        for int_name, int_data in nic_data.items():
-
-            # add/update interface with retrieved data
-            nic_object, ip_address_objects = self.add_update_interface(nic_object_dict.get(int_name), device_vm_object,
-                                                                       int_data, nic_ips.get(int_name, list()),
-                                                                       disable_vlan_sync=True,
-                                                                       ip_tenant_inheritance_order=
-                                                                       None)
-
-            # add all interface IPs
-            for ip_object in ip_address_objects:
-
-                ip_interface_object = ip_interface(grab(ip_object, "data.address"))
-
-                if ip_object is None:
-                    continue
-
-                # continue if address is not a primary IP
-                if ip_interface_object not in [primary_ipv4_object, primary_ipv6_object]:
-                    continue
-
-                # set/update/remove primary IP addresses
-                set_this_primary_ip = False
-                ip_version = ip_interface_object.ip.version
-                if self.set_primary_ip == "always":
-
-                    for object_type in [NBDevice, NBVM]:
-
-                        # new IPs don't need to be removed from other devices/VMs
-                        if ip_object.is_new is True:
-                            break
-
-                        for devices_vms in self.inventory.get_all_items(object_type):
-
-                            # device has no primary IP of this version
-                            this_primary_ip = grab(devices_vms, f"data.primary_ip{ip_version}")
-
-                            # we found this exact object
-                            if devices_vms == device_vm_object:
-                                continue
-
-                            # device has the same object assigned
-                            if this_primary_ip == ip_object:
-                                devices_vms.unset_attribute(f"primary_ip{ip_version}")
-
-                    set_this_primary_ip = True
-
-                elif self.set_primary_ip != "never" and grab(device_vm_object, f"data.primary_ip{ip_version}") is None:
-                    set_this_primary_ip = True
-
-                if set_this_primary_ip is True:
-
-                    log.debug(f"Setting IP '{grab(ip_object, 'data.address')}' as primary IPv{ip_version} for "
-                              f"'{device_vm_object.get_display_name()}'")
-                    device_vm_object.update(data={f"primary_ip{ip_version}": ip_object})
-
-        return
 
 
     def update_basic_data(self):
