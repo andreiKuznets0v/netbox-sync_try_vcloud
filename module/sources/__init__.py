@@ -10,7 +10,7 @@
 # define all available sources here
 from module.sources.vmware.connection import VMWareHandler
 from module.sources.check_redfish.import_inventory import CheckRedfish
-from .vclouddirector.load_civm import CheckCloudDirector 
+from module.sources.vclouddirector.connection import CheckCloudDirector 
 
 from module.common.logging import get_logger
 from module.netbox.inventory import NetBoxInventory
