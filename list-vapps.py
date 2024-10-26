@@ -178,7 +178,11 @@ for vdc in vdc_list:
         for vm_res in vm_resource:
             disk_data = list()
             vapp_vm = VM(client, resource=vm_res)
-            vmName = vm_res.attrib["name"]
+            vmDict = utils.vm_to_dict(vm_res)
+            vmName = vmDict.get('name',None)
+            vmDescription = vmDict.get('description',None)
+            if vmDescription:
+                print(f"description for {vmName} is: {vmDescription}")
             vm_storage_profiles = vapp_vm.list_storage_profile()
             vm_hardware = vapp_vm.list_virtual_hardware_section(is_disk=True)
             # get device info
@@ -194,6 +198,7 @@ for vdc in vdc_list:
 
             #{'diskElementName': 'Hard disk 1', 'diskVirtualQuantityInBytes': 80530636800}        
             allvm_org_list[vdc_name][vapp_name].append({
+                'id'      : (vmDict.get("id")).split(':').pop(),
                 'name'    : vmName, 
                 'active'  : vapp_vm.is_powered_on(),                
                 #'hardware': vapp_vm.list_virtual_hardware_section(is_disk=True),
@@ -204,13 +209,13 @@ for vdc in vdc_list:
             
             
             #get_vm_metadata
- 
+            vm_osSection = vapp_vm.get_operating_system_section()
             vm_metadata = vapp_vm.get_metadata()
             vm_metadata_obg = Metadata(client=client,resource=vm_metadata)
             vm_metadata_res  = vm_metadata_obg.get_resource()
             vm_metadata_dict = utils.metadata_to_dict(vm_metadata_res)
             print(f"metadata_res:{utils.metadata_to_dict(vm_metadata_res)}")
-            break
+            #break
         #print(type(vm_resource))
         break
 #print(f"vm info is {allvm_org_list}")

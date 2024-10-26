@@ -41,6 +41,12 @@ class VcloudDirectorConfig(ConfigBase):
                          description="host name / IP address of tenant vdc frontend",
                          config_example="vcloud.example.com",
                          mandatory=True),
+          
+            ConfigOption("vcloud_org",
+                         str,
+                         description="org name",
+                         config_example="my-tenant-id",
+                         mandatory=True),
 
             ConfigOption("port",
                          int,
@@ -161,24 +167,21 @@ class VcloudDirectorConfig(ConfigBase):
 
                                 ConfigOption("vm_tag_relation", str, config_example="grafana.* = Infrastructure")
                               ]),
-            ConfigOption("sync_custom_attributes",
+            ConfigOption("skip_vm_comments",
                          bool,
-                         description="""sync custom attributes defined for hosts and VMs
-                         in vCenter to NetBox as custom fields""",
+                         description="""skip sync vm description""",
                          default_value=False),
-            ConfigOptionGroup(title="custom object attributes",
-                              description="""\
-                              add arbitrary host/vm object attributes as custom fields to NetBox.
-                              multiple attributes can be defined comma separated.
-                              to get a list of available attributes use '-l DEBUG3' as cli param (CAREFUL: output might be long)
-                              and here 'https://gist.github.com/bb-Ricardo/538768487bdac4efafabe56e005cb4ef' can be seen how to
-                              access these attributes
-                              """,
-                              options=[               
-                                ConfigOption("vm_custom_object_attributes",
-                                             str,
-                                             config_example="config.uuid")
-                              ]),
+            ConfigOption("sync_metadata",
+                         bool,
+                         description="""sync metadata for  VMs
+                         in Cloud Director to NetBox as custom fields""",
+                         default_value=False),
+            ConfigOption("allowed_metadata_fields",
+                         str,
+                         description="""List allowed metadata for sync to custom fields to NetBox
+                         """,
+                         config_example="VB_LAST_BACKUP, VB_LAST_BACKUP2"
+                         ),
 
             ConfigOption("overwrite_vm_interface_name",
                          bool,
@@ -197,13 +200,25 @@ class VcloudDirectorConfig(ConfigBase):
                          default_value=True),
 
             ConfigOption(**config_option_ip_tenant_inheritance_order_definition),
-            ConfigOption("custom_attribute_exclude",
+ 
+            ConfigOption("set_primary_ip",
                          str,
-                         description="""defines a comma separated list of custom attribute which should be excluded
-                         from sync. Any custom attribute with a matching attribute key will be excluded from sync.
+                         description="""\
+                         define how the primary IPs should be set
+                         possible values:
+
+                           always:     will remove primary IP from the object where this address is
+                                       currently set as primary and moves it to new object
+
+                           when-undefined:
+                                       only sets primary IP if undefined, will cause ERRORs if same IP is
+                                       assigned more then once to different hosts and IP is set as the
+                                       objects primary IP
+
+                           never:      don't set any primary IPs, will cause the same ERRORs
+                                       as "when-undefined"
                          """,
-                         config_example="VB_LAST_BACKUP, VB_LAST_BACKUP2"
-                         ),
+                         default_value="when-undefined"),
         ]
 
         super().__init__()
@@ -245,6 +260,12 @@ class VcloudDirectorConfig(ConfigBase):
                     })
 
                 option.set_value(relation_data)
+
+                continue
+            
+            if option.key == "allowed_metadata_keys":
+
+                option.set_value(quoted_split(option.value))
 
                 continue
              
