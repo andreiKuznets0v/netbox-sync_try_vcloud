@@ -24,3 +24,6 @@ settings.ini
 
 # toml conf
 *.toml
+
+# test project py file
+list-vapps.py
