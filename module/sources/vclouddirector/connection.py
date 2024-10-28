@@ -43,6 +43,7 @@ from pyvcloud.vcd.org import Org
 from pyvcloud.vcd.vdc import VDC
 from pyvcloud.vcd.vapp import VApp
 from pyvcloud.vcd.vm import VM
+from pyvcloud.vcd.metadata import Metadata
 from pyvcloud.vcd import utils
 
 log = get_logger()
@@ -333,16 +334,33 @@ class CheckCloudDirector(VMWareHandler):
             annotation = get_string_or_none(vm_dict.get('description',None))
         if annotation is not None:
             vm_data["comments"] = annotation
-        '''
-                custom_field = self.add_update_custom_field({
-                    "name": "vcsa_host_cpu_cores",
-                    "label": "Physical CPU Cores",
-                    "object_types": [object_type],
-                    "type": "text",
-                    "description": f"vCenter '{self.name}' reported Host CPU cores"
-                })
 
-        '''
+        # Get vm metadata for NetBox custom fields
+        if self.settings.sync_metadata:
+            log.debug(f"Get metadata for VM: {name}")
+            vm_metadata = vapp_vm.get_metadata()
+            vm_metadata_obg = Metadata(self.vcloudClient,resource=vm_metadata)
+            vm_metadata_res  = vm_metadata_obg.get_resource()
+            vm_metadata_dict = utils.metadata_to_dict(vm_metadata_res)
+            custom_field = None
+            vm_custom_field = dict()
+            for key,value in vm_metadata_dict.items():
+                if self.settings.allowed_metadata_fields:
+                    if key.lower() in self.settings.allowed_metadata_fields:
+                        vm_custom_field[key.lower()] = value
+                else:
+                    vm_custom_field[key.lower()] = value
+                log.debug(f"Create custom field {key.lower()} from VM {name} metadata")
+                custom_field = self.add_update_custom_field({
+                    "name": key.lower(),
+                    "label": key,
+                    "object_types": "virtualization.virtualmachine",
+                    "type": "text"
+                })
+            if custom_field:    
+                vm_data["custom_fields"] = vm_custom_field
+
+        #'''
         # Aptein tenant info
         tenant_name = self.get_object_relation(cluster_name, "cluster_tenant_relation")
         if tenant_name is not None:

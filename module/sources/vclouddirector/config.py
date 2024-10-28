@@ -180,7 +180,8 @@ class VcloudDirectorConfig(ConfigBase):
                          str,
                          description="""List allowed metadata for sync to custom fields to NetBox
                          """,
-                         config_example="VB_LAST_BACKUP, VB_LAST_BACKUP2"
+                         config_example="VB_LAST_BACKUP, VB_LAST_BACKUP2",
+                         default_value=None
                          ),
 
             ConfigOption("overwrite_vm_interface_name",
