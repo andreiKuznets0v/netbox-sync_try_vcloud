@@ -28,6 +28,6 @@ COPY --chown=netbox-sync:netbox-sync . .
 
 # Use virtual env packages and allow timezone setup
 ENV PATH=/opt/netbox-sync/venv/bin:$PATH
-ENV TZ=Europe/Berlin
+ENV TZ=Europe/Moscov
 
-ENTRYPOINT ["python3", "netbox-sync.py"]
+ENTRYPOINT ["python3", "schduled-worker.py"]
