@@ -264,7 +264,7 @@ class VcloudDirectorConfig(ConfigBase):
 
                 continue
             
-            if option.key == "allowed_metadata_keys":
+            if option.key == "allowed_metadata_fields":
 
                 option.set_value(quoted_split(option.value))
 

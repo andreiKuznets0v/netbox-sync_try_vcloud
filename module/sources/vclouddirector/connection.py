@@ -110,7 +110,7 @@ class CheckCloudDirector(VMWareHandler):
 
     def apply(self):
 
-        log.info(f"Query data from vCenter: '{self.settings.vcloud_url}'")
+        log.info(f"Query data from vCD: '{self.settings.vcloud_url}'")
         """
         Main source handler method. This method is called for each source from "main" program
         to retrieve data from it source and apply it to the NetBox inventory.
@@ -120,15 +120,7 @@ class CheckCloudDirector(VMWareHandler):
         First try to find and iterate over each inventory file.
         Then parse the system data first and then all components.
         """
-        # add tags
-        #self.add_necessary_base_objects()
-        
-        object_mapping = {
-            "datacenter": {
-                "view_type": VDC,
-                "view_handler": self.add_datacenter
-            }
-        }
+ 
 
         vdc_org = self.get_vcloud_org(self.vcloudClient)
         self.add_datacenter( {"name": vdc_org.get_name() } )
@@ -187,8 +179,13 @@ class CheckCloudDirector(VMWareHandler):
         self.vcloudClient = client
 
     def get_vcloud_org(self, client):
-        org_resource = client.get_org()
-        return Org(client, resource=org_resource)        
+        # Check Client Status
+        try:
+            org_resource = client.get_org()
+            return Org(client, resource=org_resource)
+        except:
+            log.error(f"Connetction closed to {self.settings.vcloud_url}") 
+            return None       
 
     def get_vdc_list(self, org):
         vdc_list = org.list_vdcs()
@@ -351,8 +348,9 @@ class CheckCloudDirector(VMWareHandler):
                 else:
                     vm_custom_field[key.lower()] = value
                 log.debug(f"Create custom field {key.lower()} from VM {name} metadata")
+            for key in vm_custom_field.keys():
                 custom_field = self.add_update_custom_field({
-                    "name": key.lower(),
+                    "name": key,
                     "label": key,
                     "object_types": "virtualization.virtualmachine",
                     "type": "text"
