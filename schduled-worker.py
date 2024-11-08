@@ -8,7 +8,7 @@ from datetime import datetime
 def main():
     lTime = datetime.now()
     print(f'Start Sheduler work {lTime.strftime("%c")}')
-    schedule.every(8).hours.do(netbox_sync.main)
+    schedule.every(6).hours.do(netbox_sync.main)
  
 #
     while True:

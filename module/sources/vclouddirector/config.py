@@ -165,7 +165,7 @@ class VcloudDirectorConfig(ConfigBase):
                                              """,
                                              config_example=".* = Server"),
 
-                                ConfigOption("vm_tag_relation", str, config_example="grafana.* = Infrastructure")
+                                ConfigOption("vm_metadata_relation", str, config_example="grafana.* = Infrastructure")
                               ]),
             ConfigOption("skip_vm_comments",
                          bool,

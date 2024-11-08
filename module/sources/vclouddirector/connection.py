@@ -380,7 +380,7 @@ class CheckCloudDirector(VMWareHandler):
                 disk_size += grab(hw_element,'diskVirtualQuantityInBytes')
                 disk_data.append({
                         "name": hw_element.get("diskElementName"),
-                        "size": int(hw_element.get('diskVirtualQuantityInBytes',0) / 1024 / 1024),
+                        "size": int(hw_element.get('diskVirtualQuantityInBytes',0) / 1024 / 1024 /1024),
                         "description": '' #" / ".join( grab(vapp_vm.list_storage_profile(),'name' ) )                  
                 })
         for ind, val in enumerate(disk_data):
