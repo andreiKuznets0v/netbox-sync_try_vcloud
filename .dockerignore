@@ -4,5 +4,6 @@
 !LICENSE.txt
 !README.md
 !netbox-sync.py
+!schduled-worker.py
 !requirements.txt
 !settings-example.ini
