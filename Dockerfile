@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/* && \
     python3 -m venv /opt/netbox-sync/venv && \
     /opt/netbox-sync/venv/bin/python3 -m pip install --upgrade pip && \
-    /opt/netbox-sync/venv/bin/pip install -r requirements.txt && \
+    /opt/netbox-sync/venv/bin/pip install --no-cache -r requirements.txt && \
     /opt/netbox-sync/venv/bin/pip install --upgrade git+https://github.com/vmware/vsphere-automation-sdk-python.git
 
 FROM python:3.9-slim-bookworm AS netbox-sync

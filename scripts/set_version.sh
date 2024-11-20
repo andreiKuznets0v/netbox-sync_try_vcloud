@@ -31,7 +31,7 @@ sed -i "" -e 's/^__version_date__.*/__version_date__ = "'"$(date +%F)"'"/g' "${V
 
 # update config
 [[ -e "${EXAMPLE_CONFIG_FILE}" ]] && rm "$EXAMPLE_CONFIG_FILE"
-./netbox-sync.py -g -c "${EXAMPLE_CONFIG_FILE}"
+./netbox_sync.py -g -c "${EXAMPLE_CONFIG_FILE}"
 
 # update help in README.md
 README_TOP=$(sed '/# Running the script/q' "${README_FILE}")
@@ -40,7 +40,7 @@ README_BOTTOM=$(sed -n '/## TESTING/,$ p' "${README_FILE}")
 {
   echo "${README_TOP}"
   echo -e "\n"'```'
-  ./netbox-sync.py -h
+  ./netbox_sync.py -h
   echo -e '```'"\n"
   echo "${README_BOTTOM}"
 } > "${README_FILE}"

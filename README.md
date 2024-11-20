@@ -97,15 +97,15 @@ A short description can be found [here](https://docs.netbox.dev/en/stable/integr
 # Running the script
 
 ```
-usage: netbox-sync.py [-h] [-c settings.ini [settings.ini ...]] [-g]
+usage: netbox_sync.py [-h] [-c settings.ini [settings.ini ...]] [-g]
                       [-l {DEBUG3,DEBUG2,DEBUG,INFO,WARNING,ERROR}] [-n] [-p]
 
 Sync objects from various sources to NetBox
 
-Version: 1.6.1 (2024-05-14)
+Version: 1.6.1a (2024-11-18)
 Project URL: https://github.com/bb-ricardo/netbox-sync
 
-options:
+optional arguments:
   -h, --help            show this help message and exit
   -c settings.ini [settings.ini ...], --config settings.ini [settings.ini ...]
                         points to the config file to read config data from
