@@ -3,7 +3,7 @@
 !module
 !LICENSE.txt
 !README.md
-!netbox-sync.py
+!netbox_sync.py
 !schduled-worker.py
 !requirements.txt
 !settings-example.ini

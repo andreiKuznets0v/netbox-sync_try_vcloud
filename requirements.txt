@@ -8,3 +8,4 @@ setuptools>=62.00.0
 pyyaml==6.0
 pyvcloud>=23.0
 schedule
+lxml

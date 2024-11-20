@@ -7,18 +7,12 @@
 #  repository or visit: <https://opensource.org/licenses/MIT>.
 #  based on Pyvcloud Examples list-vapps.py  and pull request from https://github.com/dupondje/netbox-sync.git
 
-import os
-import re
 import math
-import datetime
-import pprint
-import ssl
+
 from ipaddress import ip_address, ip_network, ip_interface, IPv4Network
 from urllib.parse import unquote
 #
-import urllib3
 import requests
-import http
 from packaging import version
 
 #from module.sources.common.source_base import SourceBase
@@ -31,8 +25,7 @@ from module.netbox.inventory import NetBoxInventory
 from module.netbox import *
 
 
-import xmltodict
-from lxml import etree
+
 from lxml import objectify
 
 # Import Modules for Vcloud Director
@@ -263,14 +256,11 @@ class CheckCloudDirector(VMWareHandler):
     def get_vcd_network(self, vnet_data: objectify.ObjectifiedElement):
         
         log.debug(f"Get prefix for Vcd Network....")
-        xmlRaw = etree.tostring(vnet_data)
-        vnet_dict = xmltodict.parse(xmlRaw)
-        subPrefix = vnet_dict.get('OrgVdcNetwork',{}).get('Configuration',{}).get('IpScopes',{}).get('IpScope',{}).get('SubnetPrefixLength',{})
-        gw = vnet_dict.get('OrgVdcNetwork',{}).get('Configuration',{}).get('IpScopes',{}).get('IpScope',{}).get('Gateway',{})   
-        name = vnet_dict.get('OrgVdcNetwork',{}).get('@name', None)         
-        #print(f"mask:{mask}")
-        network = IPv4Network(f"{gw}/{subPrefix}",strict=False)
-        
+        subPrefix = grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="Unknown")
+        gw        = grab(vnet_data,'Configuration.IpScopes.IpScope.Gateway',fallback="Unknown")
+        name      = vnet_data.attrib.get('name',"Unknown")
+        log.debug(f"Information for vdc net {name} is gw")
+        network = IPv4Network(f"{gw}/{subPrefix}",strict=False)        
         return network
         #self.inventory.add_update_object(NBPrefix, data=data, source=self)
     

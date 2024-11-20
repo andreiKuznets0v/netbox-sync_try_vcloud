@@ -149,18 +149,16 @@ for vdc in vdc_list:
         for vnet in vapp_net:
             vnet_prop = list()
             vnet_data = vdc.get_routed_orgvdc_network(vnet['name'])
-
+            
             if isinstance(vnet_data,objectify.ObjectifiedElement):
-                
+                name      = vnet_data.attrib.get('name',"Unknown")
                 vnet_config = vnet_data.get('Configuration',None)
                 vnet_info = {
-                    "mask": grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="Unknown"),
+                    "subPrefix": grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="Unknown"),
                     "gw"  : grab(vnet_data,'Configuration.IpScopes.IpScope.Gateway',fallback="Unknown"),
-                    "name": grab(vnet,'name',fallback="Unknown")
+                    "name": name
                 }
-                #mask = vnet_dict.get('OrgVdcNetwork',{}).get('Configuration',{}).get('IpScopes',{}).get('IpScope',{}).get('SubnetPrefixLength',{})
-                #gw   = vnet_dict.get('OrgVdcNetwork',{}).get('Configuration',{}).get('IpScopes',{}).get('IpScope',{}).get('Gateway',{})
-                #name = vnet_dict.get('OrgVdcNetwork',{}).get('@name', None)
+ 
             print(f"NetInfo: {vnet_info}")
                
 
