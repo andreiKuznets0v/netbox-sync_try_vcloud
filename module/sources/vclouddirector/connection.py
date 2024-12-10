@@ -48,14 +48,12 @@ class CheckCloudDirector(VMWareHandler):
     """
 
     source_type = "vcloud_director"
-    #enabled = False
-
+ 
     vcloudClient = None
     device_object = None
     
     site_name = None
-    #permitted_subnets = None
-    #vcd_org     
+
 
     def __init__(self, name=None):
   
@@ -405,11 +403,13 @@ class CheckCloudDirector(VMWareHandler):
                 prefix = prefixNet.prefixlen    
             ip_addr = f"{ip_addr}/{prefix}"
 
-            nic_ips[network].append(ip_addr)
-            vm_primary_ip4 = ip_addr 
-
             mac_addr = grab(nic,'mac_address')
             full_name = unquote(f"vNIC{grab(nic,'index')} ({network})")
+
+            if self.settings.permitted_subnets.permitted(ip_addr, interface_name=full_name) is False:
+                continue
+            nic_ips[network].append(ip_addr)
+            vm_primary_ip4 = ip_addr 
             vm_nic_data = {
                 "name": full_name,
                 "virtual_machine": None,
