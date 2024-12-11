@@ -18,7 +18,7 @@
 import sys
 import os.path
 
-import xmltodict
+
 import tomli
 import requests
 
@@ -113,11 +113,11 @@ for vdc in vdc_list:
         #print(f"profile: {profile}")
         storage_profile = vdc.get_storage_profile(profile)
 
-        raw_data = etree.tostring(storage_profile)
-        storage_dict = xmltodict.parse(raw_data)
-        storage_url = storage_dict.get('VdcStorageProfile').get('@href') 
-
-        storage_data = vdc.client.get_resource(storage_url)
+#        raw_data = etree.tostring(storage_profile)
+#        storage_dict = xmltodict.parse(raw_data)
+#        storage_url = storage_dict.get('VdcStorageProfile').get('@href') 
+#
+#        storage_data = vdc.client.get_resource(storage_url)
 
         #print(f" stprof is: {storage_data.__dict__}")
         break
@@ -137,6 +137,30 @@ for vdc in vdc_list:
     allvm_org_list = dict()
     allvm_org_list[vdc_name] = dict()
     print("Fetching vApps....")
+    vnet_dataset = dict()
+    vnet_info = dict()
+    #for vnet in vapp_net:
+    try:
+        vnet_dataset['routed'] = vdc.list_orgvdc_routed_networks()
+    except:
+        print(f"Fail get data For routed_orgvdc_network by {vdc_name}")
+    try:
+        vnet_dataset['direct'] = vdc.list_orgvdc_direct_networks()
+    except:
+        print(f"Fail get data For direct_orgvdc_network by {vdc_name}")
+    
+    for vnet_list in vnet_dataset.values():
+        for vnet_data in vnet_list:
+            if isinstance(vnet_data,objectify.ObjectifiedElement):
+                name      = vnet_data.attrib.get('name',"Unknown")
+                vnet_config = vnet_data.get('Configuration',None)
+                vnet_info[name] = {
+                    "subPrefix": grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="Unknown"),
+                    "gw"  : grab(vnet_data,'Configuration.IpScopes.IpScope.Gateway',fallback="Unknown")
+                }
+
+    print(f"NetInfo: {vnet_info}")
+    
     for vapp in vapp_list:
         vapp_name = vapp.get('name')
         vapp_resource = vdc.get_vapp(vapp_name)
@@ -146,20 +170,7 @@ for vdc in vdc_list:
         #print(type(vm_resource))
         
         vapp_net = vapp_obj.get_vapp_network_list()
-        for vnet in vapp_net:
-            vnet_prop = list()
-            vnet_data = vdc.get_routed_orgvdc_network(vnet['name'])
-            
-            if isinstance(vnet_data,objectify.ObjectifiedElement):
-                name      = vnet_data.attrib.get('name',"Unknown")
-                vnet_config = vnet_data.get('Configuration',None)
-                vnet_info = {
-                    "subPrefix": grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="Unknown"),
-                    "gw"  : grab(vnet_data,'Configuration.IpScopes.IpScope.Gateway',fallback="Unknown"),
-                    "name": name
-                }
- 
-            print(f"NetInfo: {vnet_info}")
+        
                
 
          
@@ -213,7 +224,7 @@ for vdc in vdc_list:
             vm_metadata_res  = vm_metadata_obg.get_resource()
             vm_metadata_dict = utils.metadata_to_dict(vm_metadata_res)
             print(f"metadata_res:{utils.metadata_to_dict(vm_metadata_res)}")
-            #break
+            break
         #print(type(vm_resource))
         break
 #print(f"vm info is {allvm_org_list}")
