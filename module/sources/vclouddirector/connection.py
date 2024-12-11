@@ -125,24 +125,15 @@ class CheckCloudDirector(VMWareHandler):
             vdc_resource = vdc_org.get_vdc(vdc['name'])
             vdc_obj = VDC(self.vcloudClient, resource=vdc_resource)
             vapp_list = vdc_obj.list_resources(EntityType.VAPP)
+
+            log.info(f"Get Information About Network for : '{vdc['name']}'")
+            self.vdc_network_info = self.get_vdc_networks_info(vdc_obj)
+
             for vapp in vapp_list:
                 vapp_name = vapp.get('name')
+
                 vapp_resource = vdc_obj.get_vapp(vapp_name)
                 vapp_obj = VApp(self.vcloudClient, resource=vapp_resource)
-
-                log.info(f"Get Information About vAppNetwork for VApp: '{vapp_name}'")
-                try:
-                    vapp_net = vapp_obj.get_vapp_network_list()
-                except:
-                    log.error(f"Fail Get networking information for vApp:'{vapp_name}'")
-                    pass
-                    
-                for vnet in vapp_net: 
-                    try:                   
-                        vnet_data = vdc_obj.get_routed_orgvdc_network(vnet['name'])                    
-                        self.vdc_network_info[vnet['name']] = self.get_vcd_network(vnet_data)
-                    except:
-                        log.debug(f"Fail get data For routed_orgvdc_network'{vnet['name']}'")
 
                 vm_resource = vapp_obj.get_all_vms()
                 log.debug(f"Found '{len(vm_resource)}' vm in '{vapp_name}'")
@@ -181,11 +172,6 @@ class CheckCloudDirector(VMWareHandler):
     def get_vdc_list(self, org):
         vdc_list = org.list_vdcs()
         return vdc_list
-
-    def get_vapp(self, vdc):
-        vapp_list = False
-        return vapp_list
-
 
     def add_datacenter(self, obj):
         """
@@ -249,20 +235,34 @@ class CheckCloudDirector(VMWareHandler):
         self.inventory.add_update_object(NBCluster, data=data, source=self)
 
         self.permitted_clusters[name] = site_name
-    
 
-    def get_vcd_network(self, vnet_data: objectify.ObjectifiedElement):
+    def get_vdc_networks_info(self, vdc=VDC):
+        """
+        return dict routed and direct networks for vdc like this
+        {'LAN-1': {'subPrefix': 24, 'gw': '10.10.3.1'}, 'LAN-2': {'subPrefix': 24, 'gw': '10.11.0.1'}
+        """
+        vnet_dataset = dict()
+        vnet_info = dict()
+        #for vnet in vapp_net:
+        try:
+            vnet_dataset['routed'] = vdc.list_orgvdc_routed_networks()
+        except:
+            print(f"Fail get data For routed_orgvdc_network by {vdc['name']}")
+        try:
+            vnet_dataset['direct'] = vdc.list_orgvdc_direct_networks()
+        except:
+            print(f"Fail get data For direct_orgvdc_network by {vdc['name']}")
         
-        log.debug(f"Get prefix for Vcd Network....")
-        subPrefix = grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="Unknown")
-        gw        = grab(vnet_data,'Configuration.IpScopes.IpScope.Gateway',fallback="Unknown")
-        name      = vnet_data.attrib.get('name',"Unknown")
-        log.debug(f"Information for vdc net {name} is gw")
-        network = IPv4Network(f"{gw}/{subPrefix}",strict=False)        
-        return network
-        #self.inventory.add_update_object(NBPrefix, data=data, source=self)
+        for vnet_list in vnet_dataset.values():
+            for vnet_data in vnet_list:
+                if isinstance(vnet_data,objectify.ObjectifiedElement):
+                    name      = vnet_data.attrib.get('name',"Unknown")
+                    subPrefix = grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="0")
+                    gw        = grab(vnet_data,'Configuration.IpScopes.IpScope.Gateway',fallback="0")
+                    vnet_info[name] = IPv4Network(f"{gw}/{subPrefix}",strict=False) 
+                log.debug(f"Information for vdc net {name} - gw: '{gw}' prefix: '{subPrefix}'")
+        return vnet_info
     
-
     def add_virtual_machine(self, vm_res, cluster_name):
         """
         Parse a VDC VM add to NetBox once all data is gathered.
@@ -278,7 +278,7 @@ class CheckCloudDirector(VMWareHandler):
  
         vm_dict = utils.vm_to_dict(vm_res)
         name = vm_dict.get('name', None)
-        vm_uuid = get_string_or_none(vm_dict.get('name')).split(':').pop()
+        vm_uuid = get_string_or_none(vm_dict.get('id')).split(':').pop()
         if vm_uuid is None or vm_uuid in self.processed_vm_uuid and vm_res not in self.objects_to_reevaluate:
             return
 
