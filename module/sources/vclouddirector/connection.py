@@ -144,7 +144,10 @@ class CheckCloudDirector(VMWareHandler):
 
         #for view_name, view_details in object_mapping.items():
         self.update_basic_data()
-        self.vcloudClient.logout()
+        try:
+            self.vcloudClient.logout()
+        except Exception as e:
+            log.warning(f"logout failed: {e}")
 
     def create_api_session(self):
         #print(settings)

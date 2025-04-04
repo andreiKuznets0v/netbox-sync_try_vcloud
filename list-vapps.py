@@ -105,7 +105,7 @@ for vdc in vdc_list:
 
     vdc = VDC(client, resource=vdc_resource)
 
-    vdc_dict = vdc_to_dict(vdc_resource)
+    vdc_dict = vdc_to_dict(vdc.resource)
     #print(f"vdc Info is:'{vdc_dict}'")
 
     #storage_profiles = vdc.get_storage_profiles()
@@ -120,7 +120,7 @@ for vdc in vdc_list:
 #        storage_data = vdc.client.get_resource(storage_url)
 
         #print(f" stprof is: {storage_data.__dict__}")
-        break
+        #break
     '''
     Сначала получаете список политик хранения с помощью функции get_storage_profiles() из модуля pyvcloud.vcd.vdc.
     Далее с помощью функции get_resource() из модуля pyvcloud.vcd.client запрашиваете данные используя url, 
@@ -158,8 +158,11 @@ for vdc in vdc_list:
                     "subPrefix": grab(vnet_data,'Configuration.IpScopes.IpScope.SubnetPrefixLength',fallback="Unknown"),
                     "gw"  : grab(vnet_data,'Configuration.IpScopes.IpScope.Gateway',fallback="Unknown")
                 }
+        print(f"net {name}: {vnet_info[name]}")
 
-    print(f"NetInfo: {vnet_info}")
+    #print(f"NetInfo: {vnet_info}")
+    #continue
+    """
     
     for vapp in vapp_list:
         vapp_name = vapp.get('name')
@@ -227,6 +230,7 @@ for vdc in vdc_list:
             break
         #print(type(vm_resource))
         break
+    """
 #print(f"vm info is {allvm_org_list}")
 # Log out.
 print("Logging out")

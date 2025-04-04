@@ -40,7 +40,6 @@ This ensures stale objects are removed from NetBox keeping an accurate current s
 * aiodns==2.0.0
 * setuptools>=62.00.0
 * pyyaml==6.0
-* pyvcloud >=23.0
 
 ### Environment
 * NetBox >= 2.9
@@ -48,7 +47,8 @@ This ensures stale objects are removed from NetBox keeping an accurate current s
 * VMWare vCenter >= 6.0
 #### Source: check_redfish (if used)
 * check_redfish >= 1.2.0
-
+#### Source: vCloud Director (if used)
+* pyvcloud >=23.0
 # Installing
 * here we assume we install in ```/opt```
 
@@ -69,7 +69,7 @@ apt-get update && apt-get install python3-venv
 * download and setup of virtual environment
 ```shell
 cd /opt
-git clone https://github.com/bb-Ricardo/netbox-sync.git
+git clone https://github.com/andreiKuznets0v/netbox-sync_try_vcloud.git
 cd netbox-sync
 python3 -m venv .venv
 . .venv/bin/activate
@@ -102,7 +102,7 @@ usage: netbox_sync.py [-h] [-c settings.ini [settings.ini ...]] [-g]
 
 Sync objects from various sources to NetBox
 
-Version: 1.6.1b (2024-12-11)
+Version: 1.6.2 (2025-04-04)
 Project URL: https://github.com/bb-ricardo/netbox-sync
 
 optional arguments:
@@ -129,7 +129,7 @@ Also use the dry run option `-n` at the beginning to avoid changes directly in N
 
 ## Configuration
 There are two ways to define configuration. Any combination of config file(s) and environment variables is possible.
-* config files (the [default config](https://github.com/bb-Ricardo/netbox-sync/blob/main/settings-example.ini) file name is set to `./settings.ini`.)
+* config files (the [default config] settings-example.ini file name is set to `./settings.ini`.)
 * environment variables
 
 The config from the environment variables will have precedence over the config file definitions.
