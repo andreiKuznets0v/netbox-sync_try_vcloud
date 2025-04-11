@@ -132,7 +132,11 @@ class CheckCloudDirector(VMWareHandler):
             for vapp in vapp_list:
                 vapp_name = vapp.get('name')
 
-                vapp_resource = vdc_obj.get_vapp(vapp_name)
+                try:
+                    vapp_resource = vdc_obj.get_vapp(f"{vapp_name}")
+                except Exception as e:
+                    log.error(f"can not get info about {vapp_name} Error: {e}")
+                    continue
                 vapp_obj = VApp(self.vcloudClient, resource=vapp_resource)
 
                 vm_resource = vapp_obj.get_all_vms()
@@ -155,7 +159,7 @@ class CheckCloudDirector(VMWareHandler):
         requests.packages.urllib3.disable_warnings()
         client = Client(self.settings.vcloud_url,
             verify_ssl_certs=self.settings.validate_tls_certs,
-            log_file='pyvcloud.log',
+            #log_file='pyvcloud.log',
             log_requests=True,
             log_headers=True,
             log_bodies=True)
