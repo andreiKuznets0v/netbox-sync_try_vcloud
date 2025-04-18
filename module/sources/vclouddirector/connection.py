@@ -75,8 +75,11 @@ class CheckCloudDirector(VMWareHandler):
             log.info(f"Source '{name}' is currently disabled. Skipping")
             return
 
-
-        self.create_api_session()
+        try:
+            self.create_api_session()
+        except Exception as e:
+            log.error(f"Can not create session for {name}")
+            return
 
         self.init_successful = True
         self.permitted_clusters = dict()
