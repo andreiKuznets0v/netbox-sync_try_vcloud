@@ -282,8 +282,12 @@ class CheckCloudDirector(VMWareHandler):
         log.debug(f"Get vm data ....")
         vapp_vm = VM(self.vcloudClient, resource=vm_res)
         vm_storage_profiles = vapp_vm.list_storage_profile()
- 
-        vm_dict = utils.vm_to_dict(vm_res)
+
+        try:
+            vm_dict = utils.vm_to_dict(vm_res)
+        except Exception as e:
+            log.error(f"Can not convert vapp resourse to Dict: {e}")
+            return
         name = vm_dict.get('name', None)
         vm_uuid = get_string_or_none(vm_dict.get('id')).split(':').pop()
         if vm_uuid is None or vm_uuid in self.processed_vm_uuid and vm_res not in self.objects_to_reevaluate:
